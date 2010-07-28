@@ -61,43 +61,8 @@ function re_css() {
    echo '<link rel="stylesheet" type="text/css" href="' . $path . '" />';
 }
 
-function registration_css() {
-   global $recaptcha_opt;
-   
-   if ($recaptcha_opt['re_registration']) {
-		$width = 0;
-		
-		if ($recaptcha_opt['re_theme_reg'] == 'red' ||
-          $recaptcha_opt['re_theme_reg'] == 'white' ||
-          $recaptcha_opt['re_theme_reg'] == 'blackglass')
-          $width = 358;
-		else if ($recaptcha_opt['re_theme_reg'] == 'clean')
-          $width = 485;
-		
-		echo <<<REGISTRATION
-		<style type="text/css">
-		#login {
-				width: {$width}px !important;
-		}
-		
-		#login a {
-				text-align: center;
-		}
-		
-		#nav {
-				text-align: center;
-		}
-		form .submit {
-            margin-top: 10px;
-      }
-		</style>
-REGISTRATION;
-   }
-}
-
 add_action('wp_head', 're_css'); // include the stylesheet in typical pages to style hidden emails
 add_action('admin_head', 're_css'); // include stylesheet to style options page
-add_action('login_head', 'registration_css'); // include the login div styling, embedded
 
 /* =============================================================================
    End CSS
@@ -114,167 +79,17 @@ function delete_preferences() {
 register_deactivation_hook(__FILE__, 'delete_preferences');
 
 /* =============================================================================
-   reCAPTCHA on Registration Form - Thanks to Ben C.'s recapture plugin
-   ============================================================================= */
-   
-// Display the reCAPTCHA on the registration form
-function display_recaptcha($errors) {
-	global $recaptcha_opt, $wpmu;
-   
-   if ($recaptcha_opt['re_registration']) {
-		$format = <<<END
-		<script type='text/javascript'>
-		var RecaptchaOptions = { theme : '{$recaptcha_opt['re_theme_reg']}', lang : '{$recaptcha_opt['re_lang']}' , tabindex : 30 };
-		</script>
-END;
-		
-		$comment_string = <<<COMMENT_FORM
-		<script type='text/javascript'>   
-		document.getElementById('recaptcha_table').style.direction = 'ltr';
-		</script>
-COMMENT_FORM;
-
-		if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on")
-         $use_ssl = true;
-		else
-         $use_ssl = false;
-		
-		if ($wpmu == 1) {
-   		$error = $errors->get_error_message('captcha'); ?>
-   		<label for="verification">Verification:</label>
-         <?php echo($error ? '<p class="error">'.$error.'</p>' : '') ?>
-         <?php echo $format . recaptcha_wp_get_html($_GET['rerror'], $use_ssl); ?>
-   		<?php }
-		
-		else {
-         echo '<hr style="clear: both; margin-bottom: 1.5em; border: 0; border-top: 1px solid #999; height: 1px;" />';
-         echo $format . recaptcha_wp_get_html($_GET['rerror'], $use_ssl);
-      }
-   }
-}
-
-// Hook the display_recaptcha function into WordPress
-if ($wpmu != 1)
-   add_action('register_form', 'display_recaptcha');
-else
-   add_action('signup_extra_fields', 'display_recaptcha');
-
-// Check the captcha
-function check_recaptcha() {
-	global $recaptcha_opt, $errors;
-	
-   if (empty($_POST['recaptcha_response_field']))
-		$errors['blank_captcha'] = $recaptcha_opt['error_blank'];
-   
-   else {
-   	$response = recaptcha_check_answer($recaptcha_opt['privkey'],
-		$_SERVER['REMOTE_ADDR'],
-		$_POST['recaptcha_challenge_field'],
-		$_POST['recaptcha_response_field']);
-
-   	if (!$response->is_valid)
-   		if ($response->error == 'incorrect-captcha-sol')
-   				$errors['captcha_wrong'] = $recaptcha_opt['error_incorrect'];
-   }
-}
-
-// Check the captcha
-function check_recaptcha_new($errors) {
-	global $recaptcha_opt;
-	
-   if (empty($_POST['recaptcha_response_field']) || $_POST['recaptcha_response_field'] == '') {
-		$errors->add('blank_captcha', $recaptcha_opt['error_blank']);
-		return $errors;
-   }
-   
-	$response = recaptcha_check_answer($recaptcha_opt['privkey'],
-      $_SERVER['REMOTE_ADDR'],
-      $_POST['recaptcha_challenge_field'],
-      $_POST['recaptcha_response_field'] );
-
-	if (!$response->is_valid)
-		if ($response->error == 'incorrect-captcha-sol')
-			$errors->add('captcha_wrong', $recaptcha_opt['error_incorrect']);
-   
-   return $errors;
-}
-
-// Check the recaptcha on WordPress MU
-function check_recaptcha_wpmu($result) {
-   global $_POST, $recaptcha_opt;
-   
-   // must make a check here, otherwise the wp-admin/user-new.php script will keep trying to call
-   // this function despite not having called do_action('signup_extra_fields'), so the recaptcha
-   // field was never shown. this way it won't validate if it's called in the admin interface
-   if (!is_admin()) {
-         // It's blogname in 2.6, blog_id prior to that
-      if (isset($_POST['blog_id']) || isset($_POST['blogname']))
-      	return $result;
-
-      // no text entered
-      if (empty($_POST['recaptcha_response_field']) || $_POST['recaptcha_response_field'] == '') {
-      	$result['errors']->add('blank_captcha', $recaptcha_opt['error_blank']);
-      	return $result;
-      }
-
-      $response = recaptcha_check_answer($recaptcha_opt['privkey'],
-         $_SERVER['REMOTE_ADDR'],
-         $_POST['recaptcha_challenge_field'],
-         $_POST['recaptcha_response_field'] );
-
-      // incorrect CAPTCHA
-      if (!$response->is_valid)
-      	if ($response->error == 'incorrect-captcha-sol') {
-      		$result['errors']->add('captcha_wrong', $recaptcha_opt['error_incorrect']);
-            echo "<div class=\"error\">". $recaptcha_opt['error_incorrect'] . "</div>";
-      	}
-   }
-   
-   return $result;
-}
-
-if ($recaptcha_opt['re_registration']) {
-   if ($wpmu == 1)
-		add_filter('wpmu_validate_user_signup', 'check_recaptcha_wpmu');
-   
-   else if ($wpmu == 0) {
-		// Hook the check_recaptcha function into WordPress
-		if (version_compare(get_bloginfo('version'), '2.5' ) >= 0)
-         add_filter('registration_errors', 'check_recaptcha_new');
-		else
-         add_filter('registration_errors', 'check_recaptcha');
-   }
-}
-/* =============================================================================
-   End reCAPTCHA on Registration Form
-   ============================================================================= */
-
-/* =============================================================================
    reCAPTCHA Plugin Default Options
    ============================================================================= */
 
 $option_defaults = array (
-   'pubkey'	=> '', // the public key for reCAPTCHA
-   'privkey'	=> '', // the private key for reCAPTCHA
-   'use_mailhide_posts' => '0', // mailhide for posts/pages
-   'use_mailhide_comments' => '0', // use mailhide for comments
-   'use_mailhide_rss' => '0', // use mailhide for the rss feed of the posts/pages
-   'use_mailhide_rss_comments' => '0', // use mailhide for the rss comments
    're_bypass' => '', // whether to sometimes skip reCAPTCHAs for registered users
    're_bypasslevel' => '', // who doesn't have to do the reCAPTCHA (should be a valid WordPress capability slug)
-   'mh_bypass' => '', // whether to sometimes skip the MailHide filter for registered users
-   'mh_bypasslevel' => '', // who can see full emails normally (should be a valid WordPress capability slug)
-   'mailhide_pub' => '', // mailhide public key
-   'mailhide_priv' => '', // mailhide private key
    're_theme' => 'red', // the default theme for reCAPTCHA on the comment post
-   're_theme_reg' => 'red', // the default theme for reCAPTCHA on the registration form
    're_lang' => 'en', // the default language for reCAPTCHA
    're_tabindex' => '5', // the default tabindex for reCAPTCHA
    're_comments' => '1', // whether or not to show reCAPTCHA on the comment post
-   're_registration' => '1', // whether or not to show reCAPTCHA on the registratoin page
    're_xhtml' => '0', // whether or not to be XHTML 1.0 Strict compliant
-   'mh_replace_link' => '', // name the link something else
-   'mh_replace_title' => '', // title of the link
    'error_blank' => '<strong>ERROR</strong>: Please fill in the reCAPTCHA form.', // the message to display when the user enters no CAPTCHA response
    'error_incorrect' => '<strong>ERROR</strong>: That reCAPTCHA response was incorrect.', // the message to display when the user enters the incorrect CAPTCHA response
 );
@@ -285,125 +100,6 @@ if ($wpmu != 1)
 
 /* =============================================================================
    End reCAPTCHA Plugin Default Options
-   ============================================================================= */
-
-/* =============================================================================
-   MailHide - This scans for addresses and hides them using the MailHide API
-   ============================================================================= */
-
-// The main mailhide filter
-function mh_insert_email($content = '') {
-   global $recaptcha_opt;
-  
-   // set the minimum capability needed to skip the MailHide if there is one
-   if ($recaptcha_opt['mh_bypass'] && $recaptcha_opt['mh_bypasslevel'])
-      $needed_capability = $recaptcha_opt['mh_bypasslevel'];
-        
-	// skip the MailHide display if the minimum capability is met
-	if (($needed_capability && current_user_can($needed_capability)) || !$recaptcha_opt['re_comments']) {
-      // remove the nohides
-      $content = preg_replace('/\[\/?nohide\]/i','',$content);
-		return $content;
-   }
-
-   // Regular Expressions thanks to diabolic from EFNet #regex
-   
-   // match hyperlinks with emails
-   $regex = '%(?<!\[nohide\])<a[^>]*href="((?:mailto:)?([^@"]+@[^@"]+))"[^>]*>(.+?)<\/a>(?!\[/nohide\])%i';
-   $content = preg_replace_callback($regex, "mh_replace_hyperlink", $content);
-   
-   // match emails
-   $regex = '%\b([\w.+-]+@[a-z\d.-]+\.[a-z]{2,6})\b(?!\s*\[\/nohide\]|(?:(?!<a[^>]*>).)*<\/a>)%i';
-   $content = preg_replace_callback($regex, "mh_replace", $content);
-   
-   // remove the nohides
-   $content = preg_replace('/\[\/?nohide\]/i','',$content);
-   return $content;
-}
-
-// replace the hyperlinked emails i.e. <a href="haha@lol.com">this</a> or <a href="mailto:haha@lol.com">that</a>
-function mh_replace_hyperlink($matches) {
-   global $recaptcha_opt;
-   
-   // set the minimum capability needed to skip the MailHide if there is one
-   if ($recaptcha_opt['mh_bypass'] && $recaptcha_opt['mh_bypasslevel'])
-      $needed_capability = $recaptcha_opt['mh_bypasslevel'];
-        
-	// skip the MailHide display if the minimum capability is met
-	if (($needed_capability && current_user_can($needed_capability)) || !$recaptcha_opt['re_comments']) {
-      // remove the nohides
-      $content = preg_replace('/\[\/?nohide\]/i','',$content);
-		return $content;
-   }
-   
-   // get the url, the part inside the href. this is the email of course
-   $url = recaptcha_mailhide_url($recaptcha_opt['mailhide_pub'], $recaptcha_opt['mailhide_priv'], $matches[2]);
-   
-   // construct a new hyperlink with the url hidden but the link text the same
-   $html = "<a href='" . $url . "' onclick=\"window.open('" . htmlentities ($url, ENT_QUOTES) . "', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;\">" . $matches[3] . "</a>";
-   
-   // style it
-   $html = '<span class="mh-hyperlinked">' . $html . "</span>";
-   
-   return $html;
-}
-
-// replace the plain text emails i.e. haha@lol.com
-function mh_replace($matches) {
-   global $recaptcha_opt;
-   
-   # var_dump($matches);
-   
-   if ($recaptcha_opt['mh_replace_link'] == "" && $recaptcha_opt['mh_replace_title'] == "") {
-      // find plain text emails and hide them
-      $html = recaptcha_mailhide_html($recaptcha_opt['mailhide_pub'], $recaptcha_opt['mailhide_priv'], $matches[0]);
-   }
-   
-   else {
-      // replace both things
-      if ($recaptcha_opt['mh_replace_link'] != "" && $recaptcha_opt['mh_replace_title'] != "") {
-         $url = recaptcha_mailhide_url($recaptcha_opt['mailhide_pub'], $recaptcha_opt['mailhide_priv'], $matches[0]);
-         $html = "<a href='" . htmlentities($url, ENT_QUOTES) .
-      		"' onclick=\"window.open('" . htmlentities($url, ENT_QUOTES) . "', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;\" title=\"" . $recaptcha_opt['mh_replace_title'] . "\">" . $recaptcha_opt['mh_replace_link'] . "</a>";
-      }
-      
-      // only replace the link
-      else if ($recaptcha_opt['mh_replace_link'] != "" && $recaptcha_opt['mh_replace_title'] == "") {
-         $url = recaptcha_mailhide_url($recaptcha_opt['mailhide_pub'], $recaptcha_opt['mailhide_priv'], $matches[0]);
-         $html = "<a href='" . htmlentities($url, ENT_QUOTES) .
-      		"' onclick=\"window.open('" . htmlentities($url, ENT_QUOTES) . "', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;\" title=\"Reveal this e-mail address\">" . $recaptcha_opt['mh_replace_link'] . "</a>";
-      }
-      
-      // only replace the title
-      else if ($recaptcha_opt['mh_replace_link'] == "" && $recaptcha_opt['mh_replace_title'] != "") {
-         $url = recaptcha_mailhide_url($recaptcha_opt['mailhide_pub'], $recaptcha_opt['mailhide_priv'], $matches[0]);
-         $emailparts = _recaptcha_mailhide_email_parts ($matches[0]);
-      	
-      	$html = htmlentities($emailparts[0], ENT_QUOTES) . "<a href='" . htmlentities($url, ENT_QUOTES) .
-      		"' onclick=\"window.open('" . htmlentities($url, ENT_QUOTES) . "', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;\" title=\"" . $recaptcha_opt['mh_replace_title'] . "\">...</a>@" . htmlentities($emailparts[0], ENT_QUOTES);
-      }
-   }
-   
-   // style it
-   $html = '<span class="mh-plaintext">' . $html . "</span>";
-   
-   return $html;
-}
-
-// add the filters only if mcrypt is loaded
-if (extension_loaded('mcrypt')) {
-   if ($recaptcha_opt['use_mailhide_posts'])
-      add_filter('the_content', 'mh_insert_email');
-   if ($recaptcha_opt['use_mailhide_comments'])
-      add_filter('get_comment_text', 'mh_insert_email');
-   if ($recaptcha_opt['use_mailhide_rss'])
-      add_filter('the_content_rss', 'mh_insert_email');
-   if ($recaptcha_opt['use_mailhide_rss_comments'])
-      add_filter('comment_text_rss', 'mh_insert_email');
-}
-
-/* =============================================================================
-   End MailHide
    ============================================================================= */
 
 /* =============================================================================
@@ -615,18 +311,8 @@ function recaptcha_wp_options_subpanel() {
    global $wpmu;
 	// Default values for the options array
 	$optionarray_def = array(
-		'pubkey'	=> '',
-		'privkey' 	=> '',
-		'use_mailhide_posts' => '',
-		'use_mailhide_comments' => '',
-		'use_mailhide_rss' => '',
-		'use_mailhide_rss_comments' => '',
 		're_bypasslevel' => '3',
 		'mh_bypasslevel' => '3',
-		'mailhide_pub' => '',
-		'mailhide_priv' => '',
-		're_theme' => 'red',
-		're_theme_reg' => 'red',
 		're_lang' => 'en',
 		're_tabindex' => '5',
 		're_comments' => '1',
@@ -644,29 +330,15 @@ function recaptcha_wp_options_subpanel() {
 	/* Check form submission and update options if no error occurred */
 	if (isset($_POST['submit'])) {
 		$optionarray_update = array (
-		'pubkey'	=> trim($_POST['recaptcha_opt_pubkey']),
-		'privkey'	=> trim($_POST['recaptcha_opt_privkey']),
-		'use_mailhide_posts' => $_POST['use_mailhide_posts'],
-		'use_mailhide_comments' => $_POST['use_mailhide_comments'],
-		'use_mailhide_rss' => $_POST['use_mailhide_rss'],
-		'use_mailhide_rss_comments' => $_POST['use_mailhide_rss_comments'],
 		're_bypass' => $_POST['re_bypass'],
 		're_bypasslevel' => $_POST['re_bypasslevel'],
-		'mailhide_pub' => trim($_POST['mailhide_pub']),
-		'mailhide_priv' => trim($_POST['mailhide_priv']),
-		'mh_bypass' => $_POST['mh_bypass'],
-		'mh_bypasslevel' => $_POST['mh_bypasslevel'],
 		're_theme' => $_POST['re_theme'],
-		're_theme_reg' => $_POST['re_theme_reg'],
 		're_lang' => $_POST['re_lang'],
 		're_tabindex' => $_POST['re_tabindex'],
 		're_comments' => $_POST['re_comments'],
-		're_registration' => $_POST['re_registration'],
 		're_xhtml' => $_POST['re_xhtml'],
-      'mh_replace_link' => $_POST['mh_replace_link'],
-      'mh_replace_title' => $_POST['mh_replace_title'],
-      'error_blank' => $_POST['error_blank'],
-      'error_incorrect' => $_POST['error_incorrect'],
+    'error_blank' => $_POST['error_blank'],
+    'error_incorrect' => $_POST['error_incorrect'],
 		);
 	// save updated options
 	if ($wpmu == 1)
@@ -730,22 +402,6 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 	
 	<!-- ****************** Operands ****************** -->
    <table class="form-table">
-   <tr valign="top">
-		<th scope="row">reCAPTCHA Keys</th>
-		<td>
-			reCAPTCHA requires an API key, consisting of a "public" and a "private" key. You can sign up for a <a href="<?php echo recaptcha_get_signup_url (recaptcha_wp_blog_domain (), 'wordpress');?>" target="0">free reCAPTCHA key</a>.
-			<br />
-			<p class="re-keys">
-				<!-- reCAPTCHA public key -->
-				<label class="which-key" for="recaptcha_opt_pubkey">Public Key:</label>
-				<input name="recaptcha_opt_pubkey" id="recaptcha_opt_pubkey" size="40" value="<?php  echo $optionarray_def['pubkey']; ?>" />
-				<br />
-				<!-- reCAPTCHA private key -->
-				<label class="which-key" for="recaptcha_opt_privkey">Private Key:</label>
-				<input name="recaptcha_opt_privkey" id="recaptcha_opt_privkey" size="40" value="<?php  echo $optionarray_def['privkey']; ?>" />
-			</p>
-	    </td>
-    </tr>
   	<tr valign="top">
 		<th scope="row">Comment Options</th>
 		<td>
@@ -759,40 +415,11 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 			<?php recaptcha_dropdown_capabilities('re_bypasslevel', $optionarray_def['re_bypasslevel']); // <select> of capabilities ?>
 			</div>
 
-			<!-- The theme selection -->
-			<div class="theme-select">
-			<label for="re_theme">Theme:</label>
-			<select name="re_theme" id="re_theme">
-			<option value="red" <?php if($optionarray_def['re_theme'] == 'red'){echo 'selected="selected"';} ?>>Red</option>
-			<option value="white" <?php if($optionarray_def['re_theme'] == 'white'){echo 'selected="selected"';} ?>>White</option>
-			<option value="blackglass" <?php if($optionarray_def['re_theme'] == 'blackglass'){echo 'selected="selected"';} ?>>Black Glass</option>
-			<option value="clean" <?php if($optionarray_def['re_theme'] == 'clean'){echo 'selected="selected"';} ?>>Clean</option>
-			</select>
-			</div>
 			<!-- Tab Index -->
 			<label for="re_tabindex">Tab Index (<em>e.g. WP: <strong>5</strong>, WPMU: <strong>3</strong></em>):</label>
 			<input name="re_tabindex" id="re_tabindex" size="5" value="<?php  echo $optionarray_def['re_tabindex']; ?>" />
 			<br />
 			<?php global $wpmu; if ($wpmu == 1 || $wpmu == 0) { ?>
-		</td>
-	</tr>
-	<tr valign="top">
-		<th scope="row">Registration Options</th>
-		<td>
-			<!-- Show reCAPTCHA on the registration page -->
-			<big><input type="checkbox" name="re_registration" id="re_registration" value="1" <?php if($optionarray_def['re_registration'] == true){echo 'checked="checked"';} ?> /> <label for="re_registration">Enable reCAPTCHA on registration form.</label></big>
-			<br />
-			<!-- The theme selection -->
-			<div class="theme-select">
-				<label for="re_theme_reg">Theme:</label>
-				<select name="re_theme_reg" id="re_theme_reg">
-				<option value="red" <?php if($optionarray_def['re_theme_reg'] == 'red'){echo 'selected="selected"';} ?>>Red</option>
-				<option value="white" <?php if($optionarray_def['re_theme_reg'] == 'white'){echo 'selected="selected"';} ?>>White</option>
-				<option value="blackglass" <?php if($optionarray_def['re_theme_reg'] == 'blackglass'){echo 'selected="selected"';} ?>>Black Glass</option>
-				<option value="clean" <?php if($optionarray_def['re_theme_reg'] == 'clean'){echo 'selected="selected"';} ?>>Clean</option>
-				</select>
-			</div>
-			<?php } ?>
 		</td>
 	</tr>
    <tr valign="top">
@@ -815,83 +442,11 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 	 <tr valign="top">
 			<th scope="row">General Settings</th>
 			<td>
-				<!-- The language selection -->
-				<div class="lang-select">
-				<label for="re_lang">Language:</label>
-				<select name="re_lang" id="re_lang">
-				<option value="en" <?php if($optionarray_def['re_lang'] == 'en'){echo 'selected="selected"';} ?>>English</option>
-				<option value="nl" <?php if($optionarray_def['re_lang'] == 'nl'){echo 'selected="selected"';} ?>>Dutch</option>
-				<option value="fr" <?php if($optionarray_def['re_lang'] == 'fr'){echo 'selected="selected"';} ?>>French</option>
-				<option value="de" <?php if($optionarray_def['re_lang'] == 'de'){echo 'selected="selected"';} ?>>German</option>
-				<option value="pt" <?php if($optionarray_def['re_lang'] == 'pt'){echo 'selected="selected"';} ?>>Portuguese</option>
-				<option value="ru" <?php if($optionarray_def['re_lang'] == 'ru'){echo 'selected="selected"';} ?>>Russian</option>
-				<option value="es" <?php if($optionarray_def['re_lang'] == 'es'){echo 'selected="selected"';} ?>>Spanish</option>
-				<option value="tr" <?php if($optionarray_def['re_lang'] == 'tr'){echo 'selected="selected"';} ?>>Turkish</option>
-				</select>
-				</label>
-		    	</div>
-		    	<!-- Whether or not to be XHTML 1.0 Strict compliant -->
+		    <!-- Whether or not to be XHTML 1.0 Strict compliant -->
 				<input type="checkbox" name="re_xhtml" id="re_xhtml" value="1" <?php if($optionarray_def['re_xhtml'] == true){echo 'checked="checked"';} ?> /> <label for="re_xhtml">Be XHTML 1.0 Strict compliant. <strong>Note</strong>: Bad for users who don't have Javascript enabled in their browser (Majority do).</label>
 				<br />
 			</td>
 		</tr>
-	</table>
-	
-	<h3>About MailHide</h3>
-	<p><a href="http://mailhide.recaptcha.net/" title="mailhide email obfuscation">MailHide</a> uses reCAPTCHA to protect email adresses displayed on your blog from being harvested for spam.</p>
-	<p>Activating MailHide will automatically hide all emails in posts and comments from spam bots. For example, support@recaptcha.net would become supp<a href="http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=" onclick="window.open('http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;" title="Reveal this e-mail address">...</a>@recaptcha.net. There are also options below for choosing the text to show for hidden emails.</p>
-	<p>MailHide also requires a public and private key which you can generate using the <a href="http://mailhide.recaptcha.net/apikey">key generation service</a>.</p>
-	<table class="form-table">
-	<tr valign="top">
-	<th scope="row">MailHide Keys</th>
-	<td>
-		<!-- MailHide Enabler -->
-		<big>Enable MailHide email obfuscation for:</big><br />
-		   <input type="checkbox" name="use_mailhide_posts" id="use_mailhide_posts" value="1" <?php if($optionarray_def['use_mailhide_posts'] == true){echo 'checked="checked"';} ?> /><label for="use_mailhide_posts">Posts/Pages</label><br />
-		   <input type="checkbox" name="use_mailhide_comments" id="use_mailhide_comments" value="1" <?php if($optionarray_def['use_mailhide_comments'] == true){echo 'checked="checked"';} ?> /><label for="use_mailhide_comments">Comments</label><br />
-		   <input type="checkbox" name="use_mailhide_rss" id="use_mailhide_rss" value="1" <?php if($optionarray_def['use_mailhide_rss'] == true){echo 'checked="checked"';} ?> /><label for="use_mailhide_rss">RSS Feed of Posts/Pages</label><br />
-		   <input type="checkbox" name="use_mailhide_rss_comments" id="use_mailhide_rss_comments" value="1" <?php if($optionarray_def['use_mailhide_rss_comments'] == true){echo 'checked="checked"';} ?> /><label for="use_mailhide_rss_comments">RSS Feed of Comments</label><br />
-		<!-- Public Key -->
-		<p class="re-keys">
-			<label class="which-key" for="mailhide_pub">Public Key:</label>
-			<input name="mailhide_pub" id="mailhide_pub" size="40" value="<?php echo $optionarray_def['mailhide_pub']; ?>" />
-			<br />
-			<!-- Private Key -->
-			<label class="which-key" for="mailhide_priv">Private Key:</label>
-			<input name="mailhide_priv" id="mailhide_priv" size="40" value="<?php echo $optionarray_def['mailhide_priv']; ?>" />
-		</p>
-   </td>
-   </tr>
-   <tr valign="top">
-   <th scope="row">Visibility Options</th>
-   <td>
-		<!-- Don't show mailhide to users who can... -->
-		<div class="theme-select">
-			<input type="checkbox" id="mh_bypass" name="mh_bypass" <?php if($optionarray_def['mh_bypass'] == true){echo 'checked="checked"';} ?>/>
-			<label for="mh_bypass">Show full email adresses to <strong>registered</strong> users who can:</label>
-			<?php recaptcha_dropdown_capabilities('mh_bypasslevel', $optionarray_def['mh_bypasslevel']); // <select> of capabilities ?>
-		</div>
-      <!-- Email Replacement Text -->
-      <p class="re-keys">
-         <p>The following allows you to show the replaced links differently. Usually, you get something like this, supp<a href="http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=" onclick="window.open('http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;" title="Reveal this e-mail address">...</a>@recaptcha.net , where the email is broken up into two pieces and then a link with dots is placed in the middle. The <strong>Email Replacement Text</strong> value lets you choose what to name the link and then the <strong>Reveal Link Title</strong> value determines the text that is shown when the link is hovered over.</p>
-         <p>For example, if the <strong>Email Replacement Text</strong> option is set to <strong>HIDDEN EMAIL</strong> and the <strong>Reveal Link Title</strong> option is set to <strong>Click here to reveal this address</strong>, then ALL emails will be hidden like this: <a href="http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=" onclick="window.open('http://mailhide.recaptcha.net/d?k=01a8k2oW96qNZ4JhiFx5zDRg==&amp;c=yifPREOOvfzA0o3dbnnwP8fy91UD8RL4SspHDIKHVRE=', '', 'toolbar=0,scrollbars=0,location=0,statusbar=0,menubar=0,resizable=0,width=500,height=300'); return false;" title="Click here to reveal this address">HIDDEN EMAIL</a></p>
-         <p>If you want to maintain the default method of hiding emails then leave both boxes blank.</p>
-         <label class="whch-key" for="mh_replace_link">EMail Replacement Text:</label>
-         <input name="mh_replace_link" id="mh_replace_link" size="40" value="<?php echo $optionarray_def['mh_replace_link']; ?>" />
-         <br />
-         <label class="which-key" for="mh_replace_title">Reveal Link Title:</label>
-         <input name="mh_replace_title" id="mh_replace_title" size="40" value="<?php echo $optionarray_def['mh_replace_title']; ?>" />
-      </p>
-   </td>
-   </tr>
-   <tr valign="top">
-   <th scope="row">Other Information</th>
-   <td>
-		<!-- MailHide CSS -->
-		<p>CSS: You can style the hidden emails and much more in the <strong>recaptcha.css</strong> stylesheet in wp-recaptcha's plugin folder.</p>
-		<p>You can bypass email hiding for an address by enclosing it within <strong>[nohide][/nohide]</strong>, ex. [nohide]some@email.com[/nohide].</p>
-	</td>
-	</tr>
 	</table>
 	<div class="submit">
 		<input type="submit" name="submit" value="<?php _e('Update Options') ?> &raquo;" />
